@@ -31,7 +31,7 @@ enum Mode {
     },
 }
 
-fn main() -> Result<(), libusb::Error> {
+fn main() -> Result<(), rusb::Error> {
     // get all supported presets and colors
     let preset_strs: Vec<String> = kbd::Preset::iter().map(|x| x.to_string()).collect();
     let preset_strs: Vec<&str> = preset_strs.iter().map(|x| x.as_str()).collect();
@@ -130,7 +130,7 @@ fn main() -> Result<(), libusb::Error> {
                 && preset != kbd::Preset::Neon
             {
                 eprintln!("Error: Color must be specified for preset `{}`", preset);
-                return Err(libusb::Error::Other);
+                return Err(rusb::Error::Other);
             }
 
             let color = match preset_m.value_of("color") {
@@ -176,7 +176,7 @@ fn main() -> Result<(), libusb::Error> {
     // actually do the interesting stuff
 
     // set-up libusb devices, aquire handle to keyboard
-    let context = libusb::Context::new()?;
+    let context = rusb::Context::new()?;
     let kbd = kbd::FusionKBD::new(&context)?;
 
     match mode {
@@ -206,7 +206,7 @@ fn main() -> Result<(), libusb::Error> {
                 Ok(file) => file,
                 Err(_) => {
                     println!("couldn't open '{}'", config);
-                    return Err(libusb::Error::Other);
+                    return Err(rusb::Error::Other);
                 }
             };
             f.read_exact(&mut data).unwrap();
@@ -223,7 +223,7 @@ fn main() -> Result<(), libusb::Error> {
                 Ok(file) => file,
                 Err(_) => {
                     println!("couldn't open '{}'", config);
-                    return Err(libusb::Error::Other);
+                    return Err(rusb::Error::Other);
                 }
             };
             f.write(&data).unwrap();

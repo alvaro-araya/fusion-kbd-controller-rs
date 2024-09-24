@@ -1,5 +1,5 @@
 use std::time;
-
+use rusb::UsbContext;
 use strum_macros::*;
 
 #[derive(Display, EnumIter, EnumString, PartialEq)]
@@ -70,7 +70,7 @@ impl Header {
         header
     }
 
-    /// used when sending over-the-wire with libusb
+    /// used when sending over-the-wire with rusb
     fn as_bytes(&self) -> &[u8; std::mem::size_of::<Self>()] {
         unsafe { &*(self as *const Header as *const [u8; 8]) }
     }
@@ -80,25 +80,24 @@ static KIND_PRESET: u8 = 0x08;
 static KIND_CUSTOM_CONFIG: u8 = 0x12;
 static KIND_READ_CONFIG: u8 = 0x92;
 
-pub struct FusionKBD<'a> {
-    handle: libusb::DeviceHandle<'a>,
+pub struct FusionKBD<T: UsbContext> {
+    handle: rusb::DeviceHandle<T>,
 }
 
-impl<'a> FusionKBD<'a> {
-    #[allow(clippy::new_ret_no_self)]
-    pub fn new(context: &'a libusb::Context) -> Result<Self, libusb::Error> {
-        let mut handle = match context.open_device_with_vid_pid(0x1044, 0x7a39) {
+impl<'a, T: UsbContext> FusionKBD<T> {
+    pub fn new(context: &'a T) -> Result<Self, rusb::Error> {
+        let mut handle = match context.open_device_with_vid_pid(0x1044, 0x7a3f) {
             Some(handle) => handle,
             None => {
                 eprintln!("Failed to open device! Are you running as root?");
-                return Err(libusb::Error::Access);
+                return Err(rusb::Error::Access);
             }
         };
 
-        if handle.kernel_driver_active(0).unwrap() {
+        if handle.kernel_driver_active(0)? {
             handle.detach_kernel_driver(0)?;
         }
-        if handle.kernel_driver_active(3).unwrap() {
+        if handle.kernel_driver_active(3)? {
             handle.detach_kernel_driver(3)?;
         }
 
@@ -108,12 +107,12 @@ impl<'a> FusionKBD<'a> {
         Ok(FusionKBD { handle })
     }
 
-    fn write_control_kbd(&self, header: &Header) -> Result<usize, libusb::Error> {
+    fn write_control_kbd(&self, header: &Header) -> Result<usize, rusb::Error> {
         self.handle.write_control(
-            libusb::request_type(
-                libusb::Direction::Out,
-                libusb::RequestType::Class,
-                libusb::Recipient::Interface,
+            rusb::request_type(
+                rusb::Direction::Out,
+                rusb::RequestType::Class,
+                rusb::Recipient::Interface,
             ),
             0x09,   // bRequest
             0x0300, // wValue
@@ -130,7 +129,7 @@ impl<'a> FusionKBD<'a> {
         speed: u8,
         brightness: u8,
         color: Color,
-    ) -> Result<(), libusb::Error> {
+    ) -> Result<(), rusb::Error> {
         let header = Header::new(
             KIND_PRESET,
             preset as u8,
@@ -143,16 +142,16 @@ impl<'a> FusionKBD<'a> {
         Ok(())
     }
 
-    pub fn download_custom(&self, slot: u8, data: &mut [u8; 512]) -> Result<(), libusb::Error> {
+    pub fn download_custom(&self, slot: u8, data: &mut [u8; 512]) -> Result<(), rusb::Error> {
         assert!(slot < 5);
 
         self.write_control_kbd(&Header::new(KIND_READ_CONFIG, slot, 0, 0, 0))?;
 
         self.handle.read_control(
-            libusb::request_type(
-                libusb::Direction::In,
-                libusb::RequestType::Class,
-                libusb::Recipient::Interface,
+            rusb::request_type(
+                rusb::Direction::In,
+                rusb::RequestType::Class,
+                rusb::Recipient::Interface,
             ),
             0x01,        // bRequest
             0x0300,      // wValue
@@ -180,7 +179,7 @@ impl<'a> FusionKBD<'a> {
     }
 
     /// upload custom lighting scheme to selected custom mode slot
-    pub fn upload_custom(&self, slot: u8, data: &[u8]) -> Result<(), libusb::Error> {
+    pub fn upload_custom(&self, slot: u8, data: &[u8]) -> Result<(), rusb::Error> {
         assert!(slot < 5);
         let header = Header::new(KIND_CUSTOM_CONFIG, slot, 0x08, 0x00, 0x00);
         self.write_control_kbd(&header)?;
@@ -205,7 +204,7 @@ impl<'a> FusionKBD<'a> {
     }
 
     /// switch to custom lighting scheme in selected custom mode slot
-    pub fn set_custom(&self, slot: u8, brightness: u8) -> Result<(), libusb::Error> {
+    pub fn set_custom(&self, slot: u8, brightness: u8) -> Result<(), rusb::Error> {
         assert!(slot < 5);
         // 33..37 are the custom-mode slots
         let header = Header::new(KIND_PRESET, 0x33 + slot, 0, brightness, 0);
@@ -234,7 +233,7 @@ impl<'a> FusionKBD<'a> {
     }
 }
 
-impl<'a> Drop for FusionKBD<'a> {
+impl<'a, T: UsbContext> Drop for FusionKBD<T> {
     fn drop(&mut self) {
         let _ = self.handle.release_interface(0);
         let _ = self.handle.release_interface(3);

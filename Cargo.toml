@@ -6,6 +6,7 @@ edition = "2018"
 
 [dependencies]
 clap = "2.32.0"
-libusb = "0.3"
+rusb = "0.9"
 strum = "0.12.0"
 strum_macros = "0.12.0"
+# libusb = "0.3"
